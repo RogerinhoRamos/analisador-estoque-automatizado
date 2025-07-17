@@ -612,8 +612,8 @@
 
         <div class="results" id="results">
             <div class="info-panel">
-                <h3>✅ Análise Concluída</h3>
-                <p>Sua planilha foi processada com sucesso. Os resultados estão organizados por relevância e status de uso.</p>
+                <h3>✅ Análise Multidimensional Concluída</h3>
+                <p>Análise baseada em <strong>Saídas</strong> + <strong>Solicitações</strong> + <strong>Devoluções</strong> para identificar produtos críticos, ativos e obsoletos com máxima precisão.</p>
             </div>
 
             <div class="stats-grid">
@@ -649,8 +649,13 @@
                     </div>
                     
                     <div class="filter-group">
-                        <label for="freqMin">Frequência Mínima:</label>
+                        <label for="freqMin">Frequência Saídas:</label>
                         <input type="number" id="freqMin" placeholder="Ex: 10" min="0">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="solicitacoesMin">Solicitações Mín:</label>
+                        <input type="number" id="solicitacoesMin" placeholder="Ex: 5" min="0">
                     </div>
                     
                     <div class="filter-group">
@@ -672,10 +677,10 @@
                         🗑️ Limpar Filtros
                     </button>
                     <button class="btn btn-success" onclick="baixarExcel()">
-                        📥 Baixar Excel
+                        📥 Baixar Dados Filtrados
                     </button>
                     <button class="btn btn-success" onclick="baixarExcelCompleto()">
-                        📊 Baixar Análise Completa
+                        📊 Baixar Análise Multidimensional
                     </button>
                 </div>
                 
@@ -1033,10 +1038,15 @@
                         </div>
                     </td>
                     <td><span class="status-badge ${statusClass}">${item.status}</span></td>
-                    <td><strong>${item.frequenciaTotal}</strong></td>
+                    <td><strong>${item.frequenciaTotal}</strong> <small>(${item.quantidadeTotal})</small></td>
+                    <td><strong>${item.frequenciaSolicitacoes}</strong> <small>(${item.quantidadeSolicitacoes})</small></td>
+                    <td>
+                        ${item.frequenciaDevolucoes > 0 ? 
+                            `<strong>${item.frequenciaDevolucoes}</strong>${item.devolucoesProblemaTicas > 0 ? ` <span style="color: #e74c3c;">(${item.devolucoesProblemaTicas} ⚠️)</span>` : ''}` : 
+                            '<span style="color: #95a5a6;">-</span>'
+                        }
+                    </td>
                     <td>${item.diasDesdeUltimoUso} dias</td>
-                    <td>${item.usos2022}</td>
-                    <td>${item.usos2023}</td>
                     <td>${item.usos2024}</td>
                     <td>${item.usos2025}</td>
                     <td style="font-size: 1.2em">${item.tendencia}</td>
@@ -1047,12 +1057,14 @@
         function aplicarFiltros() {
             const statusFilter = document.getElementById('statusFilter').value;
             const freqMin = parseInt(document.getElementById('freqMin').value) || 0;
+            const solicitacoesMin = parseInt(document.getElementById('solicitacoesMin').value) || 0;
             const diasMax = parseInt(document.getElementById('diasMax').value) || Infinity;
             const searchCode = document.getElementById('searchCode').value.toLowerCase();
             
             dadosFiltrados = dadosCompletos.filter(item => {
                 return (!statusFilter || item.status === statusFilter) &&
                        (item.frequenciaTotal >= freqMin) &&
+                       (item.frequenciaSolicitacoes >= solicitacoesMin) &&
                        (item.diasDesdeUltimoUso <= diasMax) &&
                        (!searchCode || item.codigo.toLowerCase().includes(searchCode) || 
                         item.descricao.toLowerCase().includes(searchCode));
@@ -1064,6 +1076,7 @@
         function limparFiltros() {
             document.getElementById('statusFilter').value = '';
             document.getElementById('freqMin').value = '';
+            document.getElementById('solicitacoesMin').value = '';
             document.getElementById('diasMax').value = '';
             document.getElementById('searchCode').value = '';
             dadosFiltrados = [...dadosCompletos];
@@ -1074,7 +1087,7 @@
             const wb = XLSX.utils.book_new();
             
             const wsData = [
-                ['Código SAP', 'Descrição', 'Score Geral', 'Status', 'Frequência Total', 'Quantidade Total', 'Primeiro Uso', 'Último Uso', 'Dias Último Uso', 'Usos 2022', 'Usos 2023', 'Usos 2024', 'Usos 2025', 'Tendência'],
+                ['Código', 'Descrição', 'Score Final', 'Status', 'Freq. Saídas', 'Qtd. Saídas', 'Freq. Solicitações', 'Qtd. Solicitações', 'Freq. Devoluções', 'Devoluções Problemáticas', 'Último Uso', 'Última Solicitação', 'Dias Último Uso', 'Usos 2024', 'Usos 2025', 'Sol. 2024', 'Sol. 2025', 'Tendência'],
                 ...dadosFiltrados.map(item => [
                     item.codigo,
                     item.descricao,
@@ -1082,13 +1095,17 @@
                     item.status,
                     item.frequenciaTotal,
                     item.quantidadeTotal,
-                    item.primeiroUso,
+                    item.frequenciaSolicitacoes,
+                    item.quantidadeSolicitacoes,
+                    item.frequenciaDevolucoes,
+                    item.devolucoesProblemaTicas,
                     item.ultimoUso,
+                    item.ultimaSolicitacao,
                     item.diasDesdeUltimoUso,
-                    item.usos2022,
-                    item.usos2023,
                     item.usos2024,
                     item.usos2025,
+                    item.solicitacoes2024,
+                    item.solicitacoes2025,
                     item.tendencia
                 ])
             ];
@@ -1096,34 +1113,43 @@
             const ws = XLSX.utils.aoa_to_sheet(wsData);
             XLSX.utils.book_append_sheet(wb, ws, "Análise Filtrada");
             
-            XLSX.writeFile(wb, `Analise_Frequencia_Filtrada_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+            XLSX.writeFile(wb, `Analise_Filtrada_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
         }
 
         function baixarExcelCompleto() {
             const wb = XLSX.utils.book_new();
             
-            // Planilha principal
+            // 1. Planilha principal - Análise Completa
             const wsData = [
-                ['Código SAP', 'Descrição', 'Score Geral', 'Status', 'Frequência Total', 'Quantidade Total', 'Primeiro Uso', 'Último Uso', 'Dias Último Uso', 'Usos 2022', 'Usos 2023', 'Usos 2024', 'Usos 2025', 'Tendência'],
+                ['Código', 'Descrição', 'Score Final', 'Score Saídas', 'Score Solicitações', 'Status', 'Freq. Saídas', 'Qtd. Saídas', 'Freq. Solicitações', 'Qtd. Solicitações', 'Freq. Devoluções', 'Devoluções Problemáticas', 'Primeiro Uso', 'Último Uso', 'Última Solicitação', 'Dias Último Uso', 'Usos 2022', 'Usos 2023', 'Usos 2024', 'Usos 2025', 'Sol. 2024', 'Sol. 2025', 'Tendência'],
                 ...dadosCompletos.map(item => [
                     item.codigo,
                     item.descricao,
                     item.scoreGeral,
+                    item.scoreSaidas,
+                    item.scoreSolicitacoes,
                     item.status,
                     item.frequenciaTotal,
                     item.quantidadeTotal,
+                    item.frequenciaSolicitacoes,
+                    item.quantidadeSolicitacoes,
+                    item.frequenciaDevolucoes,
+                    item.devolucoesProblemaTicas,
                     item.primeiroUso,
                     item.ultimoUso,
+                    item.ultimaSolicitacao,
                     item.diasDesdeUltimoUso,
                     item.usos2022,
                     item.usos2023,
                     item.usos2024,
                     item.usos2025,
+                    item.solicitacoes2024,
+                    item.solicitacoes2025,
                     item.tendencia
                 ])
             ];
 
-            // Planilha de resumo
+            // 2. Planilha de resumo por status
             const statusCounts = dadosCompletos.reduce((acc, item) => {
                 acc[item.status] = (acc[item.status] || 0) + 1;
                 return acc;
@@ -1131,63 +1157,100 @@
 
             const resumoData = [
                 ['Status', 'Quantidade', 'Percentual', 'Descrição'],
-                ['Crítico', statusCounts.Crítico || 0, `${(((statusCounts.Crítico || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos essenciais em uso ativo'],
+                ['Crítico', statusCounts.Crítico || 0, `${(((statusCounts.Crítico || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos essenciais - alta demanda'],
                 ['Ativo', statusCounts.Ativo || 0, `${(((statusCounts.Ativo || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos em uso regular'],
                 ['Declínio', statusCounts.Declínio || 0, `${(((statusCounts.Declínio || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos com uso diminuindo'],
                 ['Obsoleto', statusCounts.Obsoleto || 0, `${(((statusCounts.Obsoleto || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos sem uso recente'],
                 ['TOTAL', dadosCompletos.length, '100%', 'Total de produtos analisados']
             ];
 
-            // Top críticos
+            // 3. Top críticos
             const topCriticos = dadosCompletos.filter(item => item.status === 'Crítico').slice(0, 50);
             const criticosData = [
-                ['Posição', 'Código', 'Descrição', 'Score', 'Frequência', 'Último Uso (dias)', 'Tendência'],
+                ['Posição', 'Código', 'Descrição', 'Score Final', 'Freq. Saídas', 'Freq. Solicitações', 'Último Uso (dias)', 'Tendência'],
                 ...topCriticos.map((item, index) => [
                     index + 1,
                     item.codigo,
                     item.descricao,
                     item.scoreGeral,
                     item.frequenciaTotal,
+                    item.frequenciaSolicitacoes,
                     item.diasDesdeUltimoUso,
                     item.tendencia
                 ])
             ];
 
-            // Critérios
+            // 4. Relatório de devoluções problemáticas
+            const problematicos = dadosCompletos
+                .filter(item => item.devolucoesProblemaTicas > 0)
+                .sort((a, b) => b.devolucoesProblemaTicas - a.devolucoesProblemaTicas);
+            
+            const problematicosData = [
+                ['Código', 'Descrição', 'Devoluções Problemáticas', 'Total Devoluções', 'Freq. Saídas', '% Problemas'],
+                ...problematicos.map(item => [
+                    item.codigo,
+                    item.descricao,
+                    item.devolucoesProblemaTicas,
+                    item.frequenciaDevolucoes,
+                    item.frequenciaTotal,
+                    `${((item.devolucoesProblemaTicas / Math.max(item.frequenciaDevolucoes, 1)) * 100).toFixed(1)}%`
+                ])
+            ];
+
+            // 5. Critérios de análise
             const criteriosData = [
-                ['CRITÉRIOS DE ANÁLISE'],
+                ['NOVA METODOLOGIA DE ANÁLISE'],
                 [''],
-                ['Score de Recência (40% do peso total)'],
-                ['0-30 dias: 100 pontos'],
-                ['31-90 dias: 80 pontos'],
-                ['91-180 dias: 60 pontos'],
-                ['181-365 dias: 40 pontos'],
-                ['Mais de 365 dias: 20 pontos'],
+                ['Score Final = (Score Saídas × 60%) + (Score Solicitações × 40%)'],
                 [''],
-                ['Score de Frequência (40% do peso total)'],
-                ['Baseado no número total de usos'],
+                ['SCORE DE SAÍDAS (60% do peso total)'],
+                ['Baseado na recência do último uso:'],
+                ['• 0-30 dias: 100 pontos'],
+                ['• 31-90 dias: 80 pontos'],
+                ['• 91-180 dias: 60 pontos'],
+                ['• 181-365 dias: 40 pontos'],
+                ['• Mais de 365 dias: 20 pontos'],
+                ['+ Bônus por frequência de saídas'],
                 [''],
-                ['Score de Tendência (20% do peso total)'],
-                ['Comparação entre período recente e antigo'],
+                ['SCORE DE SOLICITAÇÕES (40% do peso total)'],
+                ['Baseado na recência da última solicitação:'],
+                ['• 0-90 dias: 100 pontos'],
+                ['• 91-180 dias: 80 pontos'],
+                ['• 181-365 dias: 60 pontos'],
+                ['• Mais de 365 dias: 40 pontos'],
+                ['+ Bônus por frequência de solicitações'],
                 [''],
                 ['CLASSIFICAÇÃO POR STATUS'],
-                ['Crítico: 75-100 pontos (Verde)'],
-                ['Ativo: 50-74 pontos (Amarelo)'],
-                ['Declínio: 25-49 pontos (Laranja)'],
-                ['Obsoleto: 0-24 pontos (Vermelho)']
+                ['• Crítico: 75-100 pontos (Verde) - Produtos essenciais'],
+                ['• Ativo: 50-74 pontos (Amarelo) - Produtos em uso regular'],
+                ['• Declínio: 25-49 pontos (Laranja) - Produtos com uso diminuindo'],
+                ['• Obsoleto: 0-24 pontos (Vermelho) - Produtos sem uso recente'],
+                [''],
+                ['ANÁLISE DE DEVOLUÇÕES'],
+                ['• Devoluções "USADA": Processo normal (não afeta score)'],
+                ['• Devoluções "QUEBRA": Sinalizam necessidade de investigação'],
+                ['• Relatório separado para análise gerencial'],
+                [''],
+                ['FONTES DE DADOS'],
+                ['• Saídas: Planilha "Controle de Abastecimento"'],
+                ['• Solicitações: Planilha "Controle de RCs"'],
+                ['• Devoluções: Planilha "Controle Devolução"'],
+                ['• Descrições: Principalmente "Controle de RCs"']
             ];
 
             const ws1 = XLSX.utils.aoa_to_sheet(wsData);
             const ws2 = XLSX.utils.aoa_to_sheet(resumoData);
             const ws3 = XLSX.utils.aoa_to_sheet(criticosData);
-            const ws4 = XLSX.utils.aoa_to_sheet(criteriosData);
+            const ws4 = XLSX.utils.aoa_to_sheet(problematicosData);
+            const ws5 = XLSX.utils.aoa_to_sheet(criteriosData);
 
             XLSX.utils.book_append_sheet(wb, ws1, "Análise Completa");
             XLSX.utils.book_append_sheet(wb, ws2, "Resumo por Status");
             XLSX.utils.book_append_sheet(wb, ws3, "Top Críticos");
-            XLSX.utils.book_append_sheet(wb, ws4, "Critérios");
+            XLSX.utils.book_append_sheet(wb, ws4, "Devoluções Problemáticas");
+            XLSX.utils.book_append_sheet(wb, ws5, "Metodologia");
 
-            XLSX.writeFile(wb, `Analise_Completa_Estoque_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+            XLSX.writeFile(wb, `Analise_Multidimensional_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
         }
     </script>
 </body>
