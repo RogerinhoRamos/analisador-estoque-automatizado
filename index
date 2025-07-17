@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de Frequência de Estoque</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+            overflow: hidden;
+            animation: slideUp 0.8s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(255,255,255,0.05) 10px,
+                rgba(255,255,255,0.05) 20px
+            );
+            animation: float 20s linear infinite;
+        }
+
+        @keyframes float {
+            0% { transform: translateX(-50px) translateY(-50px); }
+            100% { transform: translateX(50px) translateY(50px); }
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            font-weight: 300;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .upload-section {
+            padding: 50px;
+            text-align: center;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .upload-area {
+            border: 3px dashed #3498db;
+            border-radius: 20px;
+            padding: 60px;
+            background: white;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover {
+            border-color: #2980b9;
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(52, 152, 219, 0.2);
+        }
+
+        .upload-area.dragover {
+            border-color: #27ae60;
+            background: #d5f4e6;
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            color: #3498db;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .upload-text {
+            font-size: 1.3em;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .upload-hint {
+            color: #666;
+            font-size: 0.95em;
+            margin-bottom: 30px;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 18px 35px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(52, 152, 219, 0.6);
+        }
+
+        .btn:active {
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #27ae60, #229954);
+            box-shadow: 0 8px 25px rgba(39, 174, 96, 0.4);
+        }
+
+        .btn-success:hover {
+            box-shadow: 0 12px 35px rgba(39, 174, 96, 0.6);
+        }
+
+        .loading {
+            display: none;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            padding: 40px;
+            background: #f8f9fa;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #3498db, #2980b9);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        }
+        
+        .stat-number {
+            font-size: 3em;
+            font-weight: bold;
+            margin: 15px 0;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 1em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .critico { 
+            background: linear-gradient(135deg, #27ae60, #229954);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .ativo { 
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .declinio { 
+            background: linear-gradient(135deg, #e67e22, #d35400);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .obsoleto { 
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .controls {
+            padding: 40px;
+            background: white;
+        }
+        
+        .filter-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .filter-group label {
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #2c3e50;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+        }
+        
+        select, input {
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: white;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .btn-filter {
+            background: linear-gradient(135deg, #8e44ad, #9b59b6);
+            box-shadow: 0 8px 25px rgba(142, 68, 173, 0.4);
+        }
+
+        .btn-filter:hover {
+            box-shadow: 0 12px 35px rgba(142, 68, 173, 0.6);
+        }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+            box-shadow: 0 8px 25px rgba(149, 165, 166, 0.4);
+        }
+
+        .btn-clear:hover {
+            box-shadow: 0 12px 35px rgba(149, 165, 166, 0.6);
+        }
+        
+        .table-container {
+            max-height: 70vh;
+            overflow: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 15px;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #34495e, #2c3e50);
+            color: white;
+            padding: 20px 15px;
+            text-align: left;
+            font-weight: 700;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s ease;
+        }
+        
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 0.85em;
+            font-weight: 700;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .badge-critico { background: linear-gradient(135deg, #d5f4e6, #a8e6cf); color: #27ae60; }
+        .badge-ativo { background: linear-gradient(135deg, #fdeaa7, #f9ca24); color: #f39c12; }
+        .badge-declinio { background: linear-gradient(135deg, #f8d7da, #ff7675); color: #e67e22; }
+        .badge-obsoleto { background: linear-gradient(135deg, #f5c6cb, #fd79a8); color: #e74c3c; }
+        
+        .score-bar {
+            background: #ecf0f1;
+            height: 25px;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .score-fill {
+            height: 100%;
+            transition: width 0.8s ease;
+            border-radius: 15px;
+            background: linear-gradient(90deg, #3498db, #2980b9);
+        }
+        
+        .score-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 25px;
+            font-size: 0.85em;
+            font-weight: 700;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        
+        tr:nth-child(even) {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        }
+        
+        tr:hover {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            transform: scale(1.01);
+        }
+
+        .info-panel {
+            background: linear-gradient(135deg, #74b9ff, #0984e3);
+            color: white;
+            padding: 30px;
+            margin: 30px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .info-panel h3 {
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .progress-bar {
+            background: rgba(255,255,255,0.3);
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            background: white;
+            height: 100%;
+            transition: width 2s ease;
+            border-radius: 4px;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+                padding: 20px;
+            }
+            
+            .filter-section {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+
+            .button-group {
+                justify-content: center;
+            }
+
+            .btn {
+                padding: 15px 25px;
+                font-size: 14px;
+            }
+            
+            table {
+                font-size: 0.85em;
+            }
+            
+            th, td {
+                padding: 10px 8px;
+            }
+
+            .upload-area {
+                padding: 40px 20px;
+            }
+
+            .upload-icon {
+                font-size: 3em;
+            }
+        }
+
+        /* Footer Styles */
+        .footer {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            margin-top: 50px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .footer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #3498db, #9b59b6, #e74c3c, #f39c12, #27ae60);
+        }
+
+        .footer-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+
+        .footer-simple {
+            text-align: center;
+        }
+
+        .copyright {
+            font-size: 1em;
+            opacity: 0.9;
+            line-height: 1.6;
+        }
+
+        .copyright strong,
+        .developer-link strong {
+            background: linear-gradient(135deg, #3498db, #9b59b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: bold;
+        }
+
+        .developer-link {
+            color: inherit;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-radius: 5px;
+            padding: 2px 5px;
+            display: inline-block;
+        }
+
+        .developer-link:hover {
+            background: rgba(52, 152, 219, 0.2);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+        }
+
+        .security-note {
+            font-size: 0.9em;
+            margin-top: 10px;
+            opacity: 0.8;
+            color: #3498db;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            .footer-content {
+                padding: 25px 20px;
+            }
+            
+            .copyright {
+                font-size: 0.9em;
+            }
+            
+            .security-note {
+                font-size: 0.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Analisador de Estoque</h1>
+            <p class="subtitle">Análise Automatizada de Frequência e Uso de Produtos</p>
+        </div>
+        
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">Faça Upload da Planilha Excel</div>
+                <div class="upload-hint">Arraste e solte o arquivo aqui ou clique para selecionar<br>
+                <small>Formatos aceitos: .xlsx, .xls</small></div>
+                <button class="btn" onclick="document.getElementById('fileInput').click()">
+                    🔍 Selecionar Arquivo
+                </button>
+                <input type="file" id="fileInput" accept=".xlsx,.xls" />
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <h3>Processando planilha...</h3>
+            <p>Analisando frequência e padrões de uso</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+
+        <div class="results" id="results">
+            <div class="info-panel">
+                <h3>✅ Análise Concluída</h3>
+                <p>Sua planilha foi processada com sucesso. Os resultados estão organizados por relevância e status de uso.</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number critico" id="statCritico">0</div>
+                    <div class="stat-label">Produtos Críticos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number ativo" id="statAtivo">0</div>
+                    <div class="stat-label">Produtos Ativos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number declinio" id="statDeclinio">0</div>
+                    <div class="stat-label">Em Declínio</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number obsoleto" id="statObsoleto">0</div>
+                    <div class="stat-label">Obsoletos</div>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <div class="filter-section">
+                    <div class="filter-group">
+                        <label for="statusFilter">Status:</label>
+                        <select id="statusFilter">
+                            <option value="">Todos os Status</option>
+                            <option value="Crítico">🟢 Crítico</option>
+                            <option value="Ativo">🟡 Ativo</option>
+                            <option value="Declínio">🟠 Declínio</option>
+                            <option value="Obsoleto">🔴 Obsoleto</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="freqMin">Frequência Mínima:</label>
+                        <input type="number" id="freqMin" placeholder="Ex: 10" min="0">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="diasMax">Último Uso (dias):</label>
+                        <input type="number" id="diasMax" placeholder="Ex: 90" min="0">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="searchCode">Buscar Código:</label>
+                        <input type="text" id="searchCode" placeholder="Digite código...">
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn btn-filter" onclick="aplicarFiltros()">
+                        🔍 Aplicar Filtros
+                    </button>
+                    <button class="btn btn-clear" onclick="limparFiltros()">
+                        🗑️ Limpar Filtros
+                    </button>
+                    <button class="btn btn-success" onclick="baixarExcel()">
+                        📥 Baixar Excel
+                    </button>
+                    <button class="btn btn-success" onclick="baixarExcelCompleto()">
+                        📊 Baixar Análise Completa
+                    </button>
+                </div>
+                
+                <div class="table-container">
+                    <table id="dataTable">
+                        <thead>
+                            <tr>
+                                <th>🏷️ Código</th>
+                                <th>📋 Descrição</th>
+                                <th>📊 Score</th>
+                                <th>🚦 Status</th>
+                                <th>📈 Freq.</th>
+                                <th>📅 Último Uso</th>
+                                <th>📊 2022</th>
+                                <th>📊 2023</th>
+                                <th>📊 2024</th>
+                                <th>📊 2025</th>
+                                <th>📈 Tendência</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-simple">
+                <div class="copyright">
+                    <p>&copy; 2025 Analisador de Estoque - Desenvolvido por 
+                        <a href="https://www.linkedin.com/in/rogério-costa-ramos-0aa0aa26/" target="_blank" class="developer-link">
+                            <strong>Rogerinho Ramos</strong> 🔗
+                        </a>
+                    </p>
+                    <p class="security-note">
+                        🔒 Processamento 100% local - Seus dados permanecem seguros em seu computador
+                    </p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        let dadosCompletos = [];
+        let dadosFiltrados = [];
+
+        // Configurar drag and drop
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                processarArquivo(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                processarArquivo(e.target.files[0]);
+            }
+        });
+
+        function mostrarLoading() {
+            document.querySelector('.upload-section').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+            
+            // Simular progresso
+            const progressFill = document.getElementById('progressFill');
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 30;
+                if (progress > 90) progress = 90;
+                progressFill.style.width = progress + '%';
+            }, 200);
+
+            setTimeout(() => {
+                clearInterval(interval);
+                progressFill.style.width = '100%';
+            }, 2000);
+        }
+
+        function processarArquivo(file) {
+            mostrarLoading();
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    setTimeout(() => {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                        analisarDados(workbook);
+                    }, 2500); // Delay para mostrar loading
+                } catch (error) {
+                    alert('Erro ao processar arquivo: ' + error.message);
+                    document.querySelector('.upload-section').style.display = 'block';
+                    document.getElementById('loading').style.display = 'none';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function analisarDados(workbook) {
+            try {
+                console.log("=== DIAGNÓSTICO DO CATÁLOGO ===");
+                
+                // 1. Verificar todas as planilhas que podem ter descrições
+                const planilhasPossiveis = ["Plan3", "Plan5", "Planilha5"];
+                let melhorCatalogo = new Map();
+                let estatisticasPlanilhas = {};
+                
+                for (let nomePlanilha of planilhasPossiveis) {
+                    if (workbook.Sheets[nomePlanilha]) {
+                        const dados = XLSX.utils.sheet_to_json(workbook.Sheets[nomePlanilha], { header: 1 });
+                        console.log(`Planilha ${nomePlanilha}: ${dados.length} linhas`);
+                        
+                        // Tentar diferentes combinações de colunas
+                        let catalogoTemp = new Map();
+                        for (let i = 1; i < dados.length; i++) {
+                            const row = dados[i];
+                            if (row && row.length > 1) {
+                                // Tentar diferentes formatos de código
+                                for (let colCodigo = 0; colCodigo < Math.min(3, row.length); colCodigo++) {
+                                    for (let colDesc = 1; colDesc < Math.min(4, row.length); colDesc++) {
+                                        if (colCodigo !== colDesc && row[colCodigo] && row[colDesc]) {
+                                            const codigo = String(row[colCodigo]).trim();
+                                            const descricao = String(row[colDesc]).trim();
+                                            
+                                            // Só aceitar se parece código válido e descrição válida
+                                            if (codigo.length > 3 && descricao.length > 5 && 
+                                                !descricao.includes('undefined') && 
+                                                descricao !== codigo) {
+                                                catalogoTemp.set(codigo, {
+                                                    codigo: codigo,
+                                                    descricao: descricao,
+                                                    fonte: `${nomePlanilha}_${colCodigo}_${colDesc}`
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        estatisticasPlanilhas[nomePlanilha] = catalogoTemp.size;
+                        console.log(`${nomePlanilha}: ${catalogoTemp.size} produtos com descrição`);
+                        
+                        // Usar o catálogo com mais produtos válidos
+                        if (catalogoTemp.size > melhorCatalogo.size) {
+                            melhorCatalogo = catalogoTemp;
+                            console.log(`Usando ${nomePlanilha} como catálogo principal`);
+                        }
+                    }
+                }
+
+                console.log(`Catálogo final: ${melhorCatalogo.size} produtos`);
+
+                // 2. Carregar dados de movimentação
+                const abastecimentoSheet = workbook.Sheets["Controle de Abastecimento"];
+                const abastecimentoData = XLSX.utils.sheet_to_json(abastecimentoSheet, { header: 1 });
+                const dadosValidos = [];
+                
+                for (let i = 1; i < abastecimentoData.length; i++) {
+                    const row = abastecimentoData[i];
+                    if (row && row[0] && row[6]) {
+                        try {
+                            dadosValidos.push({
+                                codigo: String(row[0]).trim(), // Garantir que é string
+                                qtde: row[3] || 0,
+                                data: new Date(row[6])
+                            });
+                        } catch (e) {}
+                    }
+                }
+
+                // 3. Verificar taxa de sucesso do matching
+                const codigosUnicos = [...new Set(dadosValidos.map(d => d.codigo))];
+                const encontrados = codigosUnicos.filter(codigo => melhorCatalogo.has(codigo));
+                const taxaSucesso = ((encontrados.length / codigosUnicos.length) * 100).toFixed(1);
+                
+                console.log(`=== RESULTADO DO MATCHING ===`);
+                console.log(`Códigos únicos na movimentação: ${codigosUnicos.length}`);
+                console.log(`Códigos encontrados no catálogo: ${encontrados.length}`);
+                console.log(`Taxa de sucesso: ${taxaSucesso}%`);
+                
+                // 4. Mostrar exemplos de códigos não encontrados
+                const naoEncontrados = codigosUnicos.filter(codigo => !melhorCatalogo.has(codigo));
+                console.log(`Exemplos de códigos não encontrados:`, naoEncontrados.slice(0, 10));
+                
+                // 5. Mostrar exemplos de códigos encontrados
+                console.log(`Exemplos de códigos encontrados:`, encontrados.slice(0, 5));
+
+                // Resto da análise continua igual...
+                const estatisticasPorProduto = new Map();
+                dadosValidos.forEach(registro => {
+                    const codigo = registro.codigo;
+                    if (!estatisticasPorProduto.has(codigo)) {
+                        estatisticasPorProduto.set(codigo, {
+                            codigo: codigo,
+                            frequencia: 0,
+                            quantidadeTotal: 0,
+                            primeiroUso: registro.data,
+                            ultimoUso: registro.data,
+                            usos2022: 0, usos2023: 0, usos2024: 0, usos2025: 0
+                        });
+                    }
+                    
+                    const stats = estatisticasPorProduto.get(codigo);
+                    stats.frequencia++;
+                    stats.quantidadeTotal += registro.qtde;
+                    if (registro.data < stats.primeiroUso) stats.primeiroUso = registro.data;
+                    if (registro.data > stats.ultimoUso) stats.ultimoUso = registro.data;
+                    
+                    const ano = registro.data.getFullYear();
+                    if (ano === 2022) stats.usos2022++;
+                    if (ano === 2023) stats.usos2023++;
+                    if (ano === 2024) stats.usos2024++;
+                    if (ano === 2025) stats.usos2025++;
+                });
+
+                // Calcular scores com o catálogo melhorado
+                const agora = new Date();
+                dadosCompletos = Array.from(estatisticasPorProduto.values()).map(stats => {
+                    const diasDesdeUltimoUso = Math.round((agora - stats.ultimoUso) / (1000 * 60 * 60 * 24));
+                    
+                    let scoreRecencia = 0;
+                    if (diasDesdeUltimoUso <= 30) scoreRecencia = 100;
+                    else if (diasDesdeUltimoUso <= 90) scoreRecencia = 80;
+                    else if (diasDesdeUltimoUso <= 180) scoreRecencia = 60;
+                    else if (diasDesdeUltimoUso <= 365) scoreRecencia = 40;
+                    else scoreRecencia = 20;
+                    
+                    const scoreFrequencia = Math.min(100, Math.round(stats.frequencia * 5));
+                    
+                    let scoreTendencia = 50;
+                    const totalRecente = stats.usos2024 + stats.usos2025;
+                    const totalAntigo = stats.usos2022 + stats.usos2023;
+                    if (totalRecente > totalAntigo) scoreTendencia = 80;
+                    else if (totalRecente < totalAntigo && totalRecente > 0) scoreTendencia = 60;
+                    else if (totalRecente === 0 && totalAntigo > 0) scoreTendencia = 20;
+                    
+                    const scoreGeral = Math.round(scoreRecencia * 0.4 + scoreFrequencia * 0.4 + scoreTendencia * 0.2);
+                    
+                    let status = 'Obsoleto';
+                    if (scoreGeral >= 75) status = 'Crítico';
+                    else if (scoreGeral >= 50) status = 'Ativo';
+                    else if (scoreGeral >= 25) status = 'Declínio';
+                    
+                    let tendencia = '→';
+                    if (stats.usos2025 > stats.usos2024) tendencia = '↗️';
+                    else if (stats.usos2025 < stats.usos2024 && stats.usos2025 > 0) tendencia = '↘️';
+                    else if (stats.usos2025 === 0 && stats.usos2024 > 0) tendencia = '⬇️';
+                    
+                    // Buscar descrição no catálogo melhorado
+                    const produtoCatalogo = melhorCatalogo.get(stats.codigo);
+                    
+                    return {
+                        codigo: stats.codigo,
+                        descricao: produtoCatalogo?.descricao || `Código ${stats.codigo} - Sem descrição no catálogo`,
+                        frequenciaTotal: stats.frequencia,
+                        quantidadeTotal: stats.quantidadeTotal,
+                        primeiroUso: stats.primeiroUso.toLocaleDateString('pt-BR'),
+                        ultimoUso: stats.ultimoUso.toLocaleDateString('pt-BR'),
+                        diasDesdeUltimoUso,
+                        usos2022: stats.usos2022,
+                        usos2023: stats.usos2023,
+                        usos2024: stats.usos2024,
+                        usos2025: stats.usos2025,
+                        scoreGeral,
+                        status,
+                        tendencia
+                    };
+                });
+
+                dadosCompletos.sort((a, b) => b.scoreGeral - a.scoreGeral);
+                dadosFiltrados = [...dadosCompletos];
+
+                // Mostrar estatística final de matching
+                const comDescricao = dadosCompletos.filter(p => !p.descricao.includes('Sem descrição')).length;
+                const semDescricao = dadosCompletos.length - comDescricao;
+                console.log(`=== RESULTADO FINAL ===`);
+                console.log(`Produtos com descrição: ${comDescricao}`);
+                console.log(`Produtos sem descrição: ${semDescricao}`);
+                console.log(`Taxa final de sucesso: ${((comDescricao / dadosCompletos.length) * 100).toFixed(1)}%`);
+
+                mostrarResultados();
+
+            } catch (error) {
+                console.error('Erro detalhado:', error);
+                alert('Erro na análise: ' + error.message);
+                document.querySelector('.upload-section').style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function mostrarResultados() {
+            // Ocultar loading e mostrar resultados
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+
+            // Atualizar estatísticas
+            const statusCounts = dadosCompletos.reduce((acc, item) => {
+                acc[item.status] = (acc[item.status] || 0) + 1;
+                return acc;
+            }, {});
+
+            document.getElementById('statCritico').textContent = statusCounts.Crítico || 0;
+            document.getElementById('statAtivo').textContent = statusCounts.Ativo || 0;
+            document.getElementById('statDeclinio').textContent = statusCounts.Declínio || 0;
+            document.getElementById('statObsoleto').textContent = statusCounts.Obsoleto || 0;
+
+            // Renderizar tabela
+            renderizarTabela(dadosFiltrados);
+        }
+
+        function renderizarTabela(dados) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            dados.forEach(item => {
+                const row = tbody.insertRow();
+                
+                const statusClass = {
+                    'Crítico': 'badge-critico',
+                    'Ativo': 'badge-ativo',
+                    'Declínio': 'badge-declinio',
+                    'Obsoleto': 'badge-obsoleto'
+                }[item.status];
+                
+                const scoreColor = item.scoreGeral >= 75 ? '#27ae60' : 
+                                 item.scoreGeral >= 50 ? '#f39c12' : 
+                                 item.scoreGeral >= 25 ? '#e67e22' : '#e74c3c';
+                
+                row.innerHTML = `
+                    <td><strong>${item.codigo}</strong></td>
+                    <td title="${item.descricao}">${item.descricao.substring(0, 50)}${item.descricao.length > 50 ? '...' : ''}</td>
+                    <td>
+                        <div class="score-bar">
+                            <div class="score-fill" style="width: ${item.scoreGeral}%; background: ${scoreColor}"></div>
+                            <div class="score-text">${item.scoreGeral}</div>
+                        </div>
+                    </td>
+                    <td><span class="status-badge ${statusClass}">${item.status}</span></td>
+                    <td><strong>${item.frequenciaTotal}</strong></td>
+                    <td>${item.diasDesdeUltimoUso} dias</td>
+                    <td>${item.usos2022}</td>
+                    <td>${item.usos2023}</td>
+                    <td>${item.usos2024}</td>
+                    <td>${item.usos2025}</td>
+                    <td style="font-size: 1.2em">${item.tendencia}</td>
+                `;
+            });
+        }
+
+        function aplicarFiltros() {
+            const statusFilter = document.getElementById('statusFilter').value;
+            const freqMin = parseInt(document.getElementById('freqMin').value) || 0;
+            const diasMax = parseInt(document.getElementById('diasMax').value) || Infinity;
+            const searchCode = document.getElementById('searchCode').value.toLowerCase();
+            
+            dadosFiltrados = dadosCompletos.filter(item => {
+                return (!statusFilter || item.status === statusFilter) &&
+                       (item.frequenciaTotal >= freqMin) &&
+                       (item.diasDesdeUltimoUso <= diasMax) &&
+                       (!searchCode || item.codigo.toLowerCase().includes(searchCode) || 
+                        item.descricao.toLowerCase().includes(searchCode));
+            });
+            
+            renderizarTabela(dadosFiltrados);
+        }
+
+        function limparFiltros() {
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('freqMin').value = '';
+            document.getElementById('diasMax').value = '';
+            document.getElementById('searchCode').value = '';
+            dadosFiltrados = [...dadosCompletos];
+            renderizarTabela(dadosFiltrados);
+        }
+
+        function baixarExcel() {
+            const wb = XLSX.utils.book_new();
+            
+            const wsData = [
+                ['Código SAP', 'Descrição', 'Score Geral', 'Status', 'Frequência Total', 'Quantidade Total', 'Primeiro Uso', 'Último Uso', 'Dias Último Uso', 'Usos 2022', 'Usos 2023', 'Usos 2024', 'Usos 2025', 'Tendência'],
+                ...dadosFiltrados.map(item => [
+                    item.codigo,
+                    item.descricao,
+                    item.scoreGeral,
+                    item.status,
+                    item.frequenciaTotal,
+                    item.quantidadeTotal,
+                    item.primeiroUso,
+                    item.ultimoUso,
+                    item.diasDesdeUltimoUso,
+                    item.usos2022,
+                    item.usos2023,
+                    item.usos2024,
+                    item.usos2025,
+                    item.tendencia
+                ])
+            ];
+            
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, "Análise Filtrada");
+            
+            XLSX.writeFile(wb, `Analise_Frequencia_Filtrada_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+        }
+
+        function baixarExcelCompleto() {
+            const wb = XLSX.utils.book_new();
+            
+            // Planilha principal
+            const wsData = [
+                ['Código SAP', 'Descrição', 'Score Geral', 'Status', 'Frequência Total', 'Quantidade Total', 'Primeiro Uso', 'Último Uso', 'Dias Último Uso', 'Usos 2022', 'Usos 2023', 'Usos 2024', 'Usos 2025', 'Tendência'],
+                ...dadosCompletos.map(item => [
+                    item.codigo,
+                    item.descricao,
+                    item.scoreGeral,
+                    item.status,
+                    item.frequenciaTotal,
+                    item.quantidadeTotal,
+                    item.primeiroUso,
+                    item.ultimoUso,
+                    item.diasDesdeUltimoUso,
+                    item.usos2022,
+                    item.usos2023,
+                    item.usos2024,
+                    item.usos2025,
+                    item.tendencia
+                ])
+            ];
+
+            // Planilha de resumo
+            const statusCounts = dadosCompletos.reduce((acc, item) => {
+                acc[item.status] = (acc[item.status] || 0) + 1;
+                return acc;
+            }, {});
+
+            const resumoData = [
+                ['Status', 'Quantidade', 'Percentual', 'Descrição'],
+                ['Crítico', statusCounts.Crítico || 0, `${(((statusCounts.Crítico || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos essenciais em uso ativo'],
+                ['Ativo', statusCounts.Ativo || 0, `${(((statusCounts.Ativo || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos em uso regular'],
+                ['Declínio', statusCounts.Declínio || 0, `${(((statusCounts.Declínio || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos com uso diminuindo'],
+                ['Obsoleto', statusCounts.Obsoleto || 0, `${(((statusCounts.Obsoleto || 0) / dadosCompletos.length) * 100).toFixed(1)}%`, 'Produtos sem uso recente'],
+                ['TOTAL', dadosCompletos.length, '100%', 'Total de produtos analisados']
+            ];
+
+            // Top críticos
+            const topCriticos = dadosCompletos.filter(item => item.status === 'Crítico').slice(0, 50);
+            const criticosData = [
+                ['Posição', 'Código', 'Descrição', 'Score', 'Frequência', 'Último Uso (dias)', 'Tendência'],
+                ...topCriticos.map((item, index) => [
+                    index + 1,
+                    item.codigo,
+                    item.descricao,
+                    item.scoreGeral,
+                    item.frequenciaTotal,
+                    item.diasDesdeUltimoUso,
+                    item.tendencia
+                ])
+            ];
+
+            // Critérios
+            const criteriosData = [
+                ['CRITÉRIOS DE ANÁLISE'],
+                [''],
+                ['Score de Recência (40% do peso total)'],
+                ['0-30 dias: 100 pontos'],
+                ['31-90 dias: 80 pontos'],
+                ['91-180 dias: 60 pontos'],
+                ['181-365 dias: 40 pontos'],
+                ['Mais de 365 dias: 20 pontos'],
+                [''],
+                ['Score de Frequência (40% do peso total)'],
+                ['Baseado no número total de usos'],
+                [''],
+                ['Score de Tendência (20% do peso total)'],
+                ['Comparação entre período recente e antigo'],
+                [''],
+                ['CLASSIFICAÇÃO POR STATUS'],
+                ['Crítico: 75-100 pontos (Verde)'],
+                ['Ativo: 50-74 pontos (Amarelo)'],
+                ['Declínio: 25-49 pontos (Laranja)'],
+                ['Obsoleto: 0-24 pontos (Vermelho)']
+            ];
+
+            const ws1 = XLSX.utils.aoa_to_sheet(wsData);
+            const ws2 = XLSX.utils.aoa_to_sheet(resumoData);
+            const ws3 = XLSX.utils.aoa_to_sheet(criticosData);
+            const ws4 = XLSX.utils.aoa_to_sheet(criteriosData);
+
+            XLSX.utils.book_append_sheet(wb, ws1, "Análise Completa");
+            XLSX.utils.book_append_sheet(wb, ws2, "Resumo por Status");
+            XLSX.utils.book_append_sheet(wb, ws3, "Top Críticos");
+            XLSX.utils.book_append_sheet(wb, ws4, "Critérios");
+
+            XLSX.writeFile(wb, `Analise_Completa_Estoque_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+        }
+    </script>
+</body>
+</html>
