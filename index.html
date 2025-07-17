@@ -12,144 +12,6 @@
             box-sizing: border-box;
         }
 
-        function calcularTendenciasEScores() {
-            // Criar mapa de descrições a partir dos dados de suprimento
-            const mapaDescricoes = new Map();
-            dadosSuprimento.forEach(item => {
-                if (item.codigoProduto && item.descricao && item.descricao.length > 3) {
-                    mapaDescricoes.set(item.codigoProduto, item.descricao);
-                }
-                if (item.codigoSAP && item.descricao && item.descricao.length > 3) {
-                    mapaDescricoes.set(item.codigoSAP, item.descricao);
-                }
-            });
-
-            // Agrupar dados de uso por produto e ano
-            const usosPorProduto = new Map();
-            
-            dadosUso.forEach(item => {
-                const codigo = item.codigoProduto;
-                const ano = item.data.getFullYear();
-                
-                if (!usosPorProduto.has(codigo)) {
-                    usosPorProduto.set(codigo, {
-                        codigo: codigo,
-                        descricao: mapaDescricoes.get(codigo) || `Produto ${codigo}`,
-                        frequenciaTotal: 0,
-                        quantidadeTotal: 0,
-                        primeiroUso: item.data,
-                        ultimoUso: item.data,
-                        usos2022: 0,
-                        usos2023: 0,
-                        usos2024: 0,
-                        usos2025: 0
-                    });
-                }
-                
-                const produto = usosPorProduto.get(codigo);
-                produto.frequenciaTotal++;
-                produto.quantidadeTotal += item.quantidade;
-                
-                if (item.data < produto.primeiroUso) produto.primeiroUso = item.data;
-                if (item.data > produto.ultimoUso) produto.ultimoUso = item.data;
-                
-                if (ano === 2022) produto.usos2022++;
-                if (ano === 2023) produto.usos2023++;
-                if (ano === 2024) produto.usos2024++;
-                if (ano === 2025) produto.usos2025++;
-            });
-
-            // Calcular scores e tendências
-            const agora = new Date();
-            dadosTendencias = Array.from(usosPorProduto.values()).map(produto => {
-                // Score de Recência (30%)
-                const diasDesdeUltimoUso = Math.round((agora - produto.ultimoUso) / (1000 * 60 * 60 * 24));
-                let scoreRecencia = 0;
-                if (diasDesdeUltimoUso <= 30) scoreRecencia = 100;
-                else if (diasDesdeUltimoUso <= 90) scoreRecencia = 80;
-                else if (diasDesdeUltimoUso <= 180) scoreRecencia = 60;
-                else if (diasDesdeUltimoUso <= 365) scoreRecencia = 40;
-                else if (diasDesdeUltimoUso <= 730) scoreRecencia = 20;
-                else scoreRecencia = 10;
-
-                // Score de Frequência (40%)
-                const scoreFrequencia = Math.min(100, Math.round(produto.frequenciaTotal * 3));
-
-                // Score de Tendência Multi-Período (30%)
-                const tend2022_2023 = produto.usos2023 - produto.usos2022;
-                const tend2023_2024 = produto.usos2024 - produto.usos2023;
-                const tend2024_2025 = produto.usos2025 - produto.usos2024;
-
-                // Ponderar tendências (mais recente = maior peso)
-                const scoreTendencia = 50 + (
-                    (tend2022_2023 * 0.2) + 
-                    (tend2023_2024 * 0.3) + 
-                    (tend2024_2025 * 0.5)
-                ) * 5;
-                
-                const scoreTendenciaFinal = Math.max(0, Math.min(100, scoreTendencia));
-
-                // Score Final
-                const scoreGeral = Math.round(
-                    scoreRecencia * 0.3 + 
-                    scoreFrequencia * 0.4 + 
-                    scoreTendenciaFinal * 0.3
-                );
-
-                // Classificação por Status
-                let status = 'Obsoleto';
-                if (scoreGeral >= 75) status = 'Crítico';
-                else if (scoreGeral >= 50) status = 'Ativo';
-                else if (scoreGeral >= 25) status = 'Declínio';
-
-                // Análise de Tendência Qualitativa
-                let tendenciaTexto = 'Estável';
-                let tendenciaIcon = '🔄';
-                
-                if (tend2024_2025 > 2 && tend2023_2024 > 0) {
-                    tendenciaTexto = 'Crescimento';
-                    tendenciaIcon = '📈';
-                } else if (tend2024_2025 > 0) {
-                    tendenciaTexto = 'Alta';
-                    tendenciaIcon = '⚡';
-                } else if (tend2024_2025 < -2 && tend2023_2024 < 0) {
-                    tendenciaTexto = 'Queda';
-                    tendenciaIcon = '⬇️';
-                } else if (tend2024_2025 < 0) {
-                    tendenciaTexto = 'Declínio';
-                    tendenciaIcon = '📉';
-                }
-
-                return {
-                    codigo: produto.codigo,
-                    descricao: produto.descricao,
-                    scoreGeral,
-                    scoreRecencia,
-                    scoreFrequencia,
-                    scoreTendencia: Math.round(scoreTendenciaFinal),
-                    status,
-                    tendencia: tendenciaTexto,
-                    tendenciaIcon,
-                    frequenciaTotal: produto.frequenciaTotal,
-                    quantidadeTotal: produto.quantidadeTotal,
-                    ultimoUso: produto.ultimoUso.toLocaleDateString('pt-BR'),
-                    diasDesdeUltimoUso,
-                    usos2022: produto.usos2022,
-                    usos2023: produto.usos2023,
-                    usos2024: produto.usos2024,
-                    usos2025: produto.usos2025,
-                    tend2022_2023,
-                    tend2023_2024,
-                    tend2024_2025
-                };
-            });
-
-            // Ordenar por score geral (maior para menor)
-            dadosTendencias.sort((a, b) => b.scoreGeral - a.scoreGeral);
-            
-            console.log(`Análise de tendências concluída: ${dadosTendencias.length} produtos`);
-        }
-
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1050,6 +912,144 @@
             }
         });
 
+        function calcularTendenciasEScores() {
+            // Criar mapa de descrições a partir dos dados de suprimento
+            const mapaDescricoes = new Map();
+            dadosSuprimento.forEach(item => {
+                if (item.codigoProduto && item.descricao && item.descricao.length > 3) {
+                    mapaDescricoes.set(item.codigoProduto, item.descricao);
+                }
+                if (item.codigoSAP && item.descricao && item.descricao.length > 3) {
+                    mapaDescricoes.set(item.codigoSAP, item.descricao);
+                }
+            });
+
+            // Agrupar dados de uso por produto e ano
+            const usosPorProduto = new Map();
+            
+            dadosUso.forEach(item => {
+                const codigo = item.codigoProduto;
+                const ano = item.data.getFullYear();
+                
+                if (!usosPorProduto.has(codigo)) {
+                    usosPorProduto.set(codigo, {
+                        codigo: codigo,
+                        descricao: mapaDescricoes.get(codigo) || `Produto ${codigo}`,
+                        frequenciaTotal: 0,
+                        quantidadeTotal: 0,
+                        primeiroUso: item.data,
+                        ultimoUso: item.data,
+                        usos2022: 0,
+                        usos2023: 0,
+                        usos2024: 0,
+                        usos2025: 0
+                    });
+                }
+                
+                const produto = usosPorProduto.get(codigo);
+                produto.frequenciaTotal++;
+                produto.quantidadeTotal += item.quantidade;
+                
+                if (item.data < produto.primeiroUso) produto.primeiroUso = item.data;
+                if (item.data > produto.ultimoUso) produto.ultimoUso = item.data;
+                
+                if (ano === 2022) produto.usos2022++;
+                if (ano === 2023) produto.usos2023++;
+                if (ano === 2024) produto.usos2024++;
+                if (ano === 2025) produto.usos2025++;
+            });
+
+            // Calcular scores e tendências
+            const agora = new Date();
+            dadosTendencias = Array.from(usosPorProduto.values()).map(produto => {
+                // Score de Recência (30%)
+                const diasDesdeUltimoUso = Math.round((agora - produto.ultimoUso) / (1000 * 60 * 60 * 24));
+                let scoreRecencia = 0;
+                if (diasDesdeUltimoUso <= 30) scoreRecencia = 100;
+                else if (diasDesdeUltimoUso <= 90) scoreRecencia = 80;
+                else if (diasDesdeUltimoUso <= 180) scoreRecencia = 60;
+                else if (diasDesdeUltimoUso <= 365) scoreRecencia = 40;
+                else if (diasDesdeUltimoUso <= 730) scoreRecencia = 20;
+                else scoreRecencia = 10;
+
+                // Score de Frequência (40%)
+                const scoreFrequencia = Math.min(100, Math.round(produto.frequenciaTotal * 3));
+
+                // Score de Tendência Multi-Período (30%)
+                const tend2022_2023 = produto.usos2023 - produto.usos2022;
+                const tend2023_2024 = produto.usos2024 - produto.usos2023;
+                const tend2024_2025 = produto.usos2025 - produto.usos2024;
+
+                // Ponderar tendências (mais recente = maior peso)
+                const scoreTendencia = 50 + (
+                    (tend2022_2023 * 0.2) + 
+                    (tend2023_2024 * 0.3) + 
+                    (tend2024_2025 * 0.5)
+                ) * 5;
+                
+                const scoreTendenciaFinal = Math.max(0, Math.min(100, scoreTendencia));
+
+                // Score Final
+                const scoreGeral = Math.round(
+                    scoreRecencia * 0.3 + 
+                    scoreFrequencia * 0.4 + 
+                    scoreTendenciaFinal * 0.3
+                );
+
+                // Classificação por Status
+                let status = 'Obsoleto';
+                if (scoreGeral >= 75) status = 'Crítico';
+                else if (scoreGeral >= 50) status = 'Ativo';
+                else if (scoreGeral >= 25) status = 'Declínio';
+
+                // Análise de Tendência Qualitativa
+                let tendenciaTexto = 'Estável';
+                let tendenciaIcon = '🔄';
+                
+                if (tend2024_2025 > 2 && tend2023_2024 > 0) {
+                    tendenciaTexto = 'Crescimento';
+                    tendenciaIcon = '📈';
+                } else if (tend2024_2025 > 0) {
+                    tendenciaTexto = 'Alta';
+                    tendenciaIcon = '⚡';
+                } else if (tend2024_2025 < -2 && tend2023_2024 < 0) {
+                    tendenciaTexto = 'Queda';
+                    tendenciaIcon = '⬇️';
+                } else if (tend2024_2025 < 0) {
+                    tendenciaTexto = 'Declínio';
+                    tendenciaIcon = '📉';
+                }
+
+                return {
+                    codigo: produto.codigo,
+                    descricao: produto.descricao,
+                    scoreGeral,
+                    scoreRecencia,
+                    scoreFrequencia,
+                    scoreTendencia: Math.round(scoreTendenciaFinal),
+                    status,
+                    tendencia: tendenciaTexto,
+                    tendenciaIcon,
+                    frequenciaTotal: produto.frequenciaTotal,
+                    quantidadeTotal: produto.quantidadeTotal,
+                    ultimoUso: produto.ultimoUso.toLocaleDateString('pt-BR'),
+                    diasDesdeUltimoUso,
+                    usos2022: produto.usos2022,
+                    usos2023: produto.usos2023,
+                    usos2024: produto.usos2024,
+                    usos2025: produto.usos2025,
+                    tend2022_2023,
+                    tend2023_2024,
+                    tend2024_2025
+                };
+            });
+
+            // Ordenar por score geral (maior para menor)
+            dadosTendencias.sort((a, b) => b.scoreGeral - a.scoreGeral);
+            
+            console.log(`Análise de tendências concluída: ${dadosTendencias.length} produtos`);
+        }
+
         function mostrarLoading() {
             document.querySelector('.upload-section').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
@@ -1427,6 +1427,9 @@
             const ws = XLSX.utils.aoa_to_sheet(wsData);
             XLSX.utils.book_append_sheet(wb, ws, "Análise Uso");
             
+            XLSX.writeFile(wb, `Analise_Uso_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+        }
+
         function renderizarTabelaTendencias() {
             const tbody = document.getElementById('tableTendencias');
             tbody.innerHTML = '';
@@ -1614,9 +1617,6 @@
 
             XLSX.writeFile(wb, `Analise_Tendencias_MultiPeriodo_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
         }
-    </script>
-</body>
-</html>
     </script>
 </body>
 </html>
