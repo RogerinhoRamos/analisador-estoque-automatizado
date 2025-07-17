@@ -12,6 +12,144 @@
             box-sizing: border-box;
         }
 
+        function calcularTendenciasEScores() {
+            // Criar mapa de descrições a partir dos dados de suprimento
+            const mapaDescricoes = new Map();
+            dadosSuprimento.forEach(item => {
+                if (item.codigoProduto && item.descricao && item.descricao.length > 3) {
+                    mapaDescricoes.set(item.codigoProduto, item.descricao);
+                }
+                if (item.codigoSAP && item.descricao && item.descricao.length > 3) {
+                    mapaDescricoes.set(item.codigoSAP, item.descricao);
+                }
+            });
+
+            // Agrupar dados de uso por produto e ano
+            const usosPorProduto = new Map();
+            
+            dadosUso.forEach(item => {
+                const codigo = item.codigoProduto;
+                const ano = item.data.getFullYear();
+                
+                if (!usosPorProduto.has(codigo)) {
+                    usosPorProduto.set(codigo, {
+                        codigo: codigo,
+                        descricao: mapaDescricoes.get(codigo) || `Produto ${codigo}`,
+                        frequenciaTotal: 0,
+                        quantidadeTotal: 0,
+                        primeiroUso: item.data,
+                        ultimoUso: item.data,
+                        usos2022: 0,
+                        usos2023: 0,
+                        usos2024: 0,
+                        usos2025: 0
+                    });
+                }
+                
+                const produto = usosPorProduto.get(codigo);
+                produto.frequenciaTotal++;
+                produto.quantidadeTotal += item.quantidade;
+                
+                if (item.data < produto.primeiroUso) produto.primeiroUso = item.data;
+                if (item.data > produto.ultimoUso) produto.ultimoUso = item.data;
+                
+                if (ano === 2022) produto.usos2022++;
+                if (ano === 2023) produto.usos2023++;
+                if (ano === 2024) produto.usos2024++;
+                if (ano === 2025) produto.usos2025++;
+            });
+
+            // Calcular scores e tendências
+            const agora = new Date();
+            dadosTendencias = Array.from(usosPorProduto.values()).map(produto => {
+                // Score de Recência (30%)
+                const diasDesdeUltimoUso = Math.round((agora - produto.ultimoUso) / (1000 * 60 * 60 * 24));
+                let scoreRecencia = 0;
+                if (diasDesdeUltimoUso <= 30) scoreRecencia = 100;
+                else if (diasDesdeUltimoUso <= 90) scoreRecencia = 80;
+                else if (diasDesdeUltimoUso <= 180) scoreRecencia = 60;
+                else if (diasDesdeUltimoUso <= 365) scoreRecencia = 40;
+                else if (diasDesdeUltimoUso <= 730) scoreRecencia = 20;
+                else scoreRecencia = 10;
+
+                // Score de Frequência (40%)
+                const scoreFrequencia = Math.min(100, Math.round(produto.frequenciaTotal * 3));
+
+                // Score de Tendência Multi-Período (30%)
+                const tend2022_2023 = produto.usos2023 - produto.usos2022;
+                const tend2023_2024 = produto.usos2024 - produto.usos2023;
+                const tend2024_2025 = produto.usos2025 - produto.usos2024;
+
+                // Ponderar tendências (mais recente = maior peso)
+                const scoreTendencia = 50 + (
+                    (tend2022_2023 * 0.2) + 
+                    (tend2023_2024 * 0.3) + 
+                    (tend2024_2025 * 0.5)
+                ) * 5;
+                
+                const scoreTendenciaFinal = Math.max(0, Math.min(100, scoreTendencia));
+
+                // Score Final
+                const scoreGeral = Math.round(
+                    scoreRecencia * 0.3 + 
+                    scoreFrequencia * 0.4 + 
+                    scoreTendenciaFinal * 0.3
+                );
+
+                // Classificação por Status
+                let status = 'Obsoleto';
+                if (scoreGeral >= 75) status = 'Crítico';
+                else if (scoreGeral >= 50) status = 'Ativo';
+                else if (scoreGeral >= 25) status = 'Declínio';
+
+                // Análise de Tendência Qualitativa
+                let tendenciaTexto = 'Estável';
+                let tendenciaIcon = '🔄';
+                
+                if (tend2024_2025 > 2 && tend2023_2024 > 0) {
+                    tendenciaTexto = 'Crescimento';
+                    tendenciaIcon = '📈';
+                } else if (tend2024_2025 > 0) {
+                    tendenciaTexto = 'Alta';
+                    tendenciaIcon = '⚡';
+                } else if (tend2024_2025 < -2 && tend2023_2024 < 0) {
+                    tendenciaTexto = 'Queda';
+                    tendenciaIcon = '⬇️';
+                } else if (tend2024_2025 < 0) {
+                    tendenciaTexto = 'Declínio';
+                    tendenciaIcon = '📉';
+                }
+
+                return {
+                    codigo: produto.codigo,
+                    descricao: produto.descricao,
+                    scoreGeral,
+                    scoreRecencia,
+                    scoreFrequencia,
+                    scoreTendencia: Math.round(scoreTendenciaFinal),
+                    status,
+                    tendencia: tendenciaTexto,
+                    tendenciaIcon,
+                    frequenciaTotal: produto.frequenciaTotal,
+                    quantidadeTotal: produto.quantidadeTotal,
+                    ultimoUso: produto.ultimoUso.toLocaleDateString('pt-BR'),
+                    diasDesdeUltimoUso,
+                    usos2022: produto.usos2022,
+                    usos2023: produto.usos2023,
+                    usos2024: produto.usos2024,
+                    usos2025: produto.usos2025,
+                    tend2022_2023,
+                    tend2023_2024,
+                    tend2024_2025
+                };
+            });
+
+            // Ordenar por score geral (maior para menor)
+            dadosTendencias.sort((a, b) => b.scoreGeral - a.scoreGeral);
+            
+            console.log(`Análise de tendências concluída: ${dadosTendencias.length} produtos`);
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -307,6 +445,15 @@
             border-left: 4px solid #3498db;
         }
 
+        #tab-tendencias .stat-card:nth-child(1) { border-left-color: #27ae60; }
+        #tab-tendencias .stat-card:nth-child(1) .stat-number { color: #27ae60; }
+        #tab-tendencias .stat-card:nth-child(2) { border-left-color: #f39c12; }
+        #tab-tendencias .stat-card:nth-child(2) .stat-number { color: #f39c12; }
+        #tab-tendencias .stat-card:nth-child(3) { border-left-color: #e67e22; }
+        #tab-tendencias .stat-card:nth-child(3) .stat-number { color: #e67e22; }
+        #tab-tendencias .stat-card:nth-child(4) { border-left-color: #e74c3c; }
+        #tab-tendencias .stat-card:nth-child(4) .stat-number { color: #e74c3c; }
+
         .stat-card:hover {
             transform: translateY(-5px);
         }
@@ -569,8 +716,8 @@
 
         <div class="results" id="results">
             <div class="info-panel">
-                <h3>✅ Análise de Dados Concluída</h3>
-                <p>Dados organizados em <strong>Suprimento/Fornecimento</strong> e <strong>Uso/Saídas</strong> para análise detalhada e eficiente.</p>
+                <h3>✅ Análise Multi-Dimensional Concluída</h3>
+                <p>Dados organizados em <strong>Suprimento</strong>, <strong>Uso/Saídas</strong> e <strong>Análise de Tendências</strong> com scores multi-período (2022→2023→2024→2025).</p>
             </div>
 
             <div class="tabs-container">
@@ -580,6 +727,9 @@
                     </div>
                     <div class="tab" onclick="trocarTab('uso')">
                         🔄 Uso/Saídas
+                    </div>
+                    <div class="tab" onclick="trocarTab('tendencias')">
+                        📈 Análise de Tendências
                     </div>
                 </div>
             </div>
@@ -749,6 +899,101 @@
                     </table>
                 </div>
             </div>
+            <!-- Tab Tendências -->
+            <div class="tab-content" id="tab-tendencias">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number" id="produtosCriticos">0</div>
+                        <div class="stat-label">Produtos Críticos</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="produtosAtivos">0</div>
+                        <div class="stat-label">Produtos Ativos</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="produtosDeclinio">0</div>
+                        <div class="stat-label">Em Declínio</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="produtosObsoletos">0</div>
+                        <div class="stat-label">Obsoletos</div>
+                    </div>
+                </div>
+
+                <div class="filter-section">
+                    <div class="filter-group">
+                        <label for="statusFilter">Status:</label>
+                        <select id="statusFilter">
+                            <option value="">Todos os Status</option>
+                            <option value="Crítico">🟢 Crítico</option>
+                            <option value="Ativo">🟡 Ativo</option>
+                            <option value="Declínio">🟠 Declínio</option>
+                            <option value="Obsoleto">🔴 Obsoleto</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="tendenciaFilter">Tendência:</label>
+                        <select id="tendenciaFilter">
+                            <option value="">Todas as Tendências</option>
+                            <option value="Crescimento">📈 Crescimento</option>
+                            <option value="Alta">⚡ Em Alta</option>
+                            <option value="Estável">🔄 Estável</option>
+                            <option value="Declínio">📉 Declínio</option>
+                            <option value="Queda">⬇️ Em Queda</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="scoreMin">Score Mínimo:</label>
+                        <input type="number" id="scoreMin" placeholder="Ex: 50" min="0" max="100">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="freqMin">Freq. Mínima:</label>
+                        <input type="number" id="freqMin" placeholder="Ex: 5" min="0">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="searchTendencias">Buscar:</label>
+                        <input type="text" id="searchTendencias" placeholder="Código ou descrição...">
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-filter" onclick="aplicarFiltrosTendencias()">
+                        🔍 Aplicar Filtros
+                    </button>
+                    <button class="btn btn-clear" onclick="limparFiltrosTendencias()">
+                        🗑️ Limpar Filtros
+                    </button>
+                    <button class="btn btn-success" onclick="baixarTendencias()">
+                        📥 Baixar Análise Completa
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>🏷️ Código</th>
+                                <th>📋 Descrição</th>
+                                <th>📊 Score</th>
+                                <th>🚦 Status</th>
+                                <th>📈 Tendência</th>
+                                <th>📊 2022</th>
+                                <th>📊 2023</th>
+                                <th>📊 2024</th>
+                                <th>📊 2025</th>
+                                <th>📅 Último Uso</th>
+                                <th>🔢 Freq. Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableTendencias">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -772,8 +1017,10 @@
     <script>
         let dadosSuprimento = [];
         let dadosUso = [];
+        let dadosTendencias = [];
         let dadosSuprimentoFiltrados = [];
         let dadosUsoFiltrados = [];
+        let dadosTendenciasFiltrados = [];
 
         // Configurar drag and drop
         const uploadArea = document.getElementById('uploadArea');
@@ -855,15 +1102,19 @@
                     const row = rcsData[i];
                     if (row && (row[1] || row[2]) && row[5]) {
                         try {
-                            dadosSuprimento.push({
-                                codigoProduto: String(row[1] || '').trim(),
-                                codigoSAP: String(row[2] || '').trim(),
-                                descricao: String(row[3] || '').trim(),
-                                quantidade: row[4] || 0,
-                                data: new Date(row[5]),
-                                dataStr: new Date(row[5]).toLocaleDateString('pt-BR'),
-                                fornecedor: String(row[11] || 'Não informado').trim()
-                            });
+                            const data = new Date(row[5]);
+                            // Filtrar datas inválidas (bug 1900-2025)
+                            if (data.getFullYear() >= 2020 && data.getFullYear() <= 2030) {
+                                dadosSuprimento.push({
+                                    codigoProduto: String(row[1] || '').trim(),
+                                    codigoSAP: String(row[2] || '').trim(),
+                                    descricao: String(row[3] || '').trim(),
+                                    quantidade: row[4] || 0,
+                                    data: data,
+                                    dataStr: data.toLocaleDateString('pt-BR'),
+                                    fornecedor: String(row[11] || 'Não informado').trim()
+                                });
+                            }
                         } catch (e) {}
                     }
                 }
@@ -879,22 +1130,31 @@
                     const row = abastecimentoData[i];
                     if (row && row[0] && row[6]) {
                         try {
-                            dadosUso.push({
-                                codigoProduto: String(row[0]).trim(),
-                                quantidade: row[3] || 0,
-                                equipamento: String(row[4] || 'Não informado').trim(),
-                                turno: String(row[5] || 'Não informado').trim(),
-                                data: new Date(row[6]),
-                                dataStr: new Date(row[6]).toLocaleDateString('pt-BR')
-                            });
+                            const data = new Date(row[6]);
+                            // Filtrar datas inválidas
+                            if (data.getFullYear() >= 2020 && data.getFullYear() <= 2030) {
+                                dadosUso.push({
+                                    codigoProduto: String(row[0]).trim(),
+                                    quantidade: row[3] || 0,
+                                    equipamento: String(row[4] || 'Não informado').trim(),
+                                    turno: String(row[5] || 'Não informado').trim(),
+                                    data: data,
+                                    dataStr: data.toLocaleDateString('pt-BR')
+                                });
+                            }
                         } catch (e) {}
                     }
                 }
                 console.log(`Uso processado: ${dadosUso.length} registros`);
 
+                // 3. ANÁLISE DE TENDÊNCIAS E SCORES
+                console.log("Calculando tendências e scores...");
+                calcularTendenciasEScores();
+
                 // Copiar para dados filtrados
                 dadosSuprimentoFiltrados = [...dadosSuprimento];
                 dadosUsoFiltrados = [...dadosUso];
+                dadosTendenciasFiltrados = [...dadosTendencias];
 
                 // Carregar opções dos filtros
                 carregarFiltros();
@@ -905,6 +1165,7 @@
                 // Renderizar tabelas
                 renderizarTabelaSuprimento();
                 renderizarTabelaUso();
+                renderizarTabelaTendencias();
 
                 // Mostrar resultados
                 document.getElementById('loading').style.display = 'none';
@@ -982,6 +1243,19 @@
                 document.getElementById('periodoUso').textContent = 
                     `${dataMin.getFullYear()} - ${dataMax.getFullYear()}`;
             }
+
+            // Estatísticas de Tendências
+            if (dadosTendencias && dadosTendencias.length > 0) {
+                const statusCounts = dadosTendencias.reduce((acc, item) => {
+                    acc[item.status] = (acc[item.status] || 0) + 1;
+                    return acc;
+                }, {});
+
+                document.getElementById('produtosCriticos').textContent = statusCounts.Crítico || 0;
+                document.getElementById('produtosAtivos').textContent = statusCounts.Ativo || 0;
+                document.getElementById('produtosDeclinio').textContent = statusCounts.Declínio || 0;
+                document.getElementById('produtosObsoletos').textContent = statusCounts.Obsoleto || 0;
+            }
         }
 
         function trocarTab(tab) {
@@ -990,11 +1264,14 @@
             document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
             
             if (tab === 'suprimento') {
-                document.querySelector('.tab:first-child').classList.add('active');
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
                 document.getElementById('tab-suprimento').classList.add('active');
-            } else {
-                document.querySelector('.tab:last-child').classList.add('active');
+            } else if (tab === 'uso') {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
                 document.getElementById('tab-uso').classList.add('active');
+            } else if (tab === 'tendencias') {
+                document.querySelector('.tab:nth-child(3)').classList.add('active');
+                document.getElementById('tab-tendencias').classList.add('active');
             }
         }
 
@@ -1150,8 +1427,196 @@
             const ws = XLSX.utils.aoa_to_sheet(wsData);
             XLSX.utils.book_append_sheet(wb, ws, "Análise Uso");
             
-            XLSX.writeFile(wb, `Analise_Uso_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+        function renderizarTabelaTendencias() {
+            const tbody = document.getElementById('tableTendencias');
+            tbody.innerHTML = '';
+            
+            dadosTendenciasFiltrados.slice(0, 500).forEach(item => {
+                const row = tbody.insertRow();
+                
+                const statusClass = {
+                    'Crítico': 'color: #27ae60; font-weight: bold;',
+                    'Ativo': 'color: #f39c12; font-weight: bold;',
+                    'Declínio': 'color: #e67e22; font-weight: bold;',
+                    'Obsoleto': 'color: #e74c3c; font-weight: bold;'
+                }[item.status];
+
+                const scoreColor = item.scoreGeral >= 75 ? '#27ae60' : 
+                                 item.scoreGeral >= 50 ? '#f39c12' : 
+                                 item.scoreGeral >= 25 ? '#e67e22' : '#e74c3c';
+                
+                row.innerHTML = `
+                    <td><strong>${item.codigo}</strong></td>
+                    <td title="${item.descricao}">${item.descricao.substring(0, 40)}${item.descricao.length > 40 ? '...' : ''}</td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 60px; height: 20px; background: #eee; border-radius: 10px; overflow: hidden;">
+                                <div style="width: ${item.scoreGeral}%; height: 100%; background: ${scoreColor}; transition: width 0.3s;"></div>
+                            </div>
+                            <strong style="color: ${scoreColor};">${item.scoreGeral}</strong>
+                        </div>
+                    </td>
+                    <td><span style="${statusClass}">${item.status}</span></td>
+                    <td><span style="font-size: 1.2em;">${item.tendenciaIcon}</span> ${item.tendencia}</td>
+                    <td><strong>${item.usos2022}</strong></td>
+                    <td><strong>${item.usos2023}</strong></td>
+                    <td><strong>${item.usos2024}</strong></td>
+                    <td><strong>${item.usos2025}</strong></td>
+                    <td>${item.ultimoUso}</td>
+                    <td><strong>${item.frequenciaTotal}</strong></td>
+                `;
+            });
+
+            if (dadosTendenciasFiltrados.length > 500) {
+                const row = tbody.insertRow();
+                row.innerHTML = `<td colspan="11" style="text-align: center; color: #666; font-style: italic;">
+                    Mostrando primeiros 500 registros de ${dadosTendenciasFiltrados.length.toLocaleString()}. Use filtros para refinar.
+                </td>`;
+            }
         }
+
+        function aplicarFiltrosTendencias() {
+            const status = document.getElementById('statusFilter').value;
+            const tendencia = document.getElementById('tendenciaFilter').value;
+            const scoreMin = parseInt(document.getElementById('scoreMin').value) || 0;
+            const freqMin = parseInt(document.getElementById('freqMin').value) || 0;
+            const search = document.getElementById('searchTendencias').value.toLowerCase();
+
+            dadosTendenciasFiltrados = dadosTendencias.filter(item => {
+                return (!status || item.status === status) &&
+                       (!tendencia || item.tendencia === tendencia) &&
+                       (item.scoreGeral >= scoreMin) &&
+                       (item.frequenciaTotal >= freqMin) &&
+                       (!search || item.codigo.toLowerCase().includes(search) || 
+                        item.descricao.toLowerCase().includes(search));
+            });
+
+            renderizarTabelaTendencias();
+        }
+
+        function limparFiltrosTendencias() {
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('tendenciaFilter').value = '';
+            document.getElementById('scoreMin').value = '';
+            document.getElementById('freqMin').value = '';
+            document.getElementById('searchTendencias').value = '';
+            dadosTendenciasFiltrados = [...dadosTendencias];
+            renderizarTabelaTendencias();
+        }
+
+        function baixarTendencias() {
+            const wb = XLSX.utils.book_new();
+            
+            // Planilha principal - Análise de Tendências
+            const wsData = [
+                ['Código', 'Descrição', 'Score Geral', 'Score Recência', 'Score Frequência', 'Score Tendência', 'Status', 'Tendência', 'Freq. Total', 'Qtd. Total', 'Último Uso', 'Dias Último Uso', 'Usos 2022', 'Usos 2023', 'Usos 2024', 'Usos 2025', 'Trend 2022→2023', 'Trend 2023→2024', 'Trend 2024→2025'],
+                ...dadosTendenciasFiltrados.map(item => [
+                    item.codigo,
+                    item.descricao,
+                    item.scoreGeral,
+                    item.scoreRecencia,
+                    item.scoreFrequencia,
+                    item.scoreTendencia,
+                    item.status,
+                    item.tendencia,
+                    item.frequenciaTotal,
+                    item.quantidadeTotal,
+                    item.ultimoUso,
+                    item.diasDesdeUltimoUso,
+                    item.usos2022,
+                    item.usos2023,
+                    item.usos2024,
+                    item.usos2025,
+                    item.tend2022_2023,
+                    item.tend2023_2024,
+                    item.tend2024_2025
+                ])
+            ];
+
+            // Planilha de resumo por status
+            const statusCounts = dadosTendencias.reduce((acc, item) => {
+                acc[item.status] = (acc[item.status] || 0) + 1;
+                return acc;
+            }, {});
+
+            const resumoData = [
+                ['Status', 'Quantidade', 'Percentual', 'Descrição'],
+                ['Crítico', statusCounts.Crítico || 0, `${(((statusCounts.Crítico || 0) / dadosTendencias.length) * 100).toFixed(1)}%`, 'Produtos essenciais - alta demanda e uso recente'],
+                ['Ativo', statusCounts.Ativo || 0, `${(((statusCounts.Ativo || 0) / dadosTendencias.length) * 100).toFixed(1)}%`, 'Produtos em uso regular - boa performance'],
+                ['Declínio', statusCounts.Declínio || 0, `${(((statusCounts.Declínio || 0) / dadosTendencias.length) * 100).toFixed(1)}%`, 'Produtos com uso diminuindo - atenção'],
+                ['Obsoleto', statusCounts.Obsoleto || 0, `${(((statusCounts.Obsoleto || 0) / dadosTendencias.length) * 100).toFixed(1)}%`, 'Produtos sem uso recente - revisar necessidade'],
+                ['TOTAL', dadosTendencias.length, '100%', 'Total de produtos analisados']
+            ];
+
+            // Top críticos
+            const topCriticos = dadosTendencias.filter(item => item.status === 'Crítico').slice(0, 20);
+            const criticosData = [
+                ['Posição', 'Código', 'Descrição', 'Score', 'Tendência', 'Freq. Total', 'Usos 2025', 'Último Uso'],
+                ...topCriticos.map((item, index) => [
+                    index + 1,
+                    item.codigo,
+                    item.descricao,
+                    item.scoreGeral,
+                    item.tendencia,
+                    item.frequenciaTotal,
+                    item.usos2025,
+                    item.ultimoUso
+                ])
+            ];
+
+            // Metodologia
+            const metodologiaData = [
+                ['METODOLOGIA DE ANÁLISE MULTI-PERÍODO'],
+                [''],
+                ['SCORE FINAL = (Recência × 30%) + (Frequência × 40%) + (Tendência × 30%)'],
+                [''],
+                ['1. SCORE DE RECÊNCIA (30%)'],
+                ['• 0-30 dias: 100 pontos'],
+                ['• 31-90 dias: 80 pontos'],
+                ['• 91-180 dias: 60 pontos'],
+                ['• 181-365 dias: 40 pontos'],
+                ['• 366-730 dias: 20 pontos'],
+                ['• Mais de 730 dias: 10 pontos'],
+                [''],
+                ['2. SCORE DE FREQUÊNCIA (40%)'],
+                ['• Baseado no número total de usos'],
+                ['• Normalizado para escala 0-100'],
+                [''],
+                ['3. SCORE DE TENDÊNCIA MULTI-PERÍODO (30%)'],
+                ['• Analisa 3 períodos de comparação:'],
+                ['  - 2022 → 2023 (peso 20%)'],
+                ['  - 2023 → 2024 (peso 30%)'],
+                ['  - 2024 → 2025 (peso 50% - mais recente)'],
+                [''],
+                ['CLASSIFICAÇÃO POR STATUS'],
+                ['• 🟢 Crítico (75-100): Produtos essenciais'],
+                ['• 🟡 Ativo (50-74): Produtos importantes'],
+                ['• 🟠 Declínio (25-49): Produtos com uso diminuindo'],
+                ['• 🔴 Obsoleto (0-24): Produtos sem uso recente'],
+                [''],
+                ['ANÁLISE DE TENDÊNCIA QUALITATIVA'],
+                ['• 📈 Crescimento: Aumento consistente'],
+                ['• ⚡ Em Alta: Crescimento recente'],
+                ['• 🔄 Estável: Sem grandes variações'],
+                ['• 📉 Declínio: Diminuição gradual'],
+                ['• ⬇️ Em Queda: Declínio acentuado']
+            ];
+
+            const ws1 = XLSX.utils.aoa_to_sheet(wsData);
+            const ws2 = XLSX.utils.aoa_to_sheet(resumoData);
+            const ws3 = XLSX.utils.aoa_to_sheet(criticosData);
+            const ws4 = XLSX.utils.aoa_to_sheet(metodologiaData);
+
+            XLSX.utils.book_append_sheet(wb, ws1, "Análise Tendências");
+            XLSX.utils.book_append_sheet(wb, ws2, "Resumo Status");
+            XLSX.utils.book_append_sheet(wb, ws3, "Top 20 Críticos");
+            XLSX.utils.book_append_sheet(wb, ws4, "Metodologia");
+
+            XLSX.writeFile(wb, `Analise_Tendencias_MultiPeriodo_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+        }
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>
